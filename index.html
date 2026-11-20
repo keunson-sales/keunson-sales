@@ -459,13 +459,13 @@ async function runCoach(){
   if(weather&&weather.rain>=5)add('비·강수 영향 주의',`권선동 강수 ${weather.rain.toFixed(1)}mm. 배달 수요와 배달 지연 가능성을 함께 점검하세요.`, 'neutral');
   const changes=(window.__marketingLive||[]).filter(r=>{const dt=r.started_at?.slice(0,10);return dt===target||r.ended_at?.slice(0,10)===target});
   if(changes.length)add('오늘 마케팅 설정 변경 '+changes.length+'건',changes.slice(0,3).map(r=>`${coachChName[r.channel]||r.channel} ${r.kind==='advertising'?'광고':r.kind==='time_sale'?'타임세일':r.kind==='goldbox'?'골드박스':'할인·쿠폰'} ${r.kind==='time_sale'?(r.is_on?'ON '+(Number(r.value_a)||0)+'명':'OFF'):r.kind==='advertising'?(r.channel==='baemin'?'CPC '+r.value_a+'원':'신규 '+r.value_a+'% / 재구매 '+r.value_b+'%'):r.is_on===false?'OFF':'변경'}`).join(' · '));
-  const activeText=names.map(k=>{const g=state[k],bits=[];if(g.hasPromotion)bits.push(`즉시 ${g.instant.toLocaleString()}원 · 쿠폰 ${g.coupon.toLocaleString()}원${g.terms.length?' ('+[...new Set(g.terms)].join(', ')+')':''}`);if(g.ts)bits.push(`타임세일 ${g.ts.on?'ON':'OFF'} · 설정 ${g.ts.cap}명`);if(g.gold!==null)bits.push(`골드박스 ${g.gold?'ON':'OFF'}`);if(g.ad.length)bits.push(g.ad.join(' / '));return bits.length?`${coachChName[k]}: ${bits.join(' · ')}`:null}).filter(Boolean);
-  if(activeText.length)add('현재 운영 설정',activeText.join(' / '),'neutral',names.map(k=>{const g=state[k];return {name:coachChName[k],detail:[g.hasPromotion?'즉시 '+g.instant.toLocaleString()+'원 · 쿠폰 '+g.coupon.toLocaleString()+'원'+(g.terms.length?' ('+[...new Set(g.terms)].join(', ')+')':''):null,g.ts?'타임세일 '+(g.ts.on?'ON':'OFF')+' · '+g.ts.cap+'명':null,g.gold!==null?'골드박스 '+(g.gold?'ON':'OFF'):null,g.ad.length?g.ad.join(' / '):null].filter(Boolean).join(' · ')}}).filter(x=>x.detail));
+  const activeText=names.map(k=>{const g=state[k],bits=[];if(g.hasPromotion){const promotionBits=[];if(g.instant>0)promotionBits.push('즉시 '+g.instant.toLocaleString()+'원');if(g.coupon>0)promotionBits.push('쿠폰 '+g.coupon.toLocaleString()+'원'+(g.terms.length?' ('+[...new Set(g.terms)].join(', ')+')':''));bits.push(...promotionBits);}if(g.ts)bits.push(`타임세일 ${g.ts.on?'ON':'OFF'} · 설정 ${g.ts.cap}명`);if(g.gold!==null)bits.push(`골드박스 ${g.gold?'ON':'OFF'}`);if(g.ad.length)bits.push(g.ad.join(' / '));return bits.length?`${coachChName[k]}: ${bits.join(' · ')}`:null}).filter(Boolean);
+  if(activeText.length)add('현재 운영 설정',activeText.join(' / '),'neutral',names.map(k=>{const g=state[k];return {name:coachChName[k],detail:[g.hasPromotion?[g.instant>0?'즉시 '+g.instant.toLocaleString()+'원':null,g.coupon>0?'쿠폰 '+g.coupon.toLocaleString()+'원'+(g.terms.length?' ('+[...new Set(g.terms)].join(', ')+')':''):null].filter(Boolean).join(' · '):null,g.ts?'타임세일 '+(g.ts.on?'ON':'OFF')+' · '+g.ts.cap+'명':null,g.gold!==null?'골드박스 '+(g.gold?'ON':'OFF'):null,g.ad.length?g.ad.join(' / '):null].filter(Boolean).join(' · ')}}).filter(x=>x.detail));
   // v8.6: 설정별 관측 매출 비교. 서로 다른 여러 설정을 하나의 비교군으로 합치지 않습니다.
-  const candidates=same.filter(x=>dayDiff(x.date)<=180);
+  const candidates=valid.filter(x=>dayDiff(x.date)<=180);
   const segments=[
-   {id:'instant',title:'즉시할인 금액별',channels:['baemin','coupang','yogiyo'],key:g=>g.hasPromotion?g.instant.toLocaleString('ko-KR')+'원':null},
-   {id:'coupon',title:'쿠폰 금액별',channels:['baemin','coupang','yogiyo'],key:g=>g.hasPromotion?g.coupon.toLocaleString('ko-KR')+'원':null},
+   {id:'instant',title:'즉시할인 금액별',channels:['baemin','coupang','yogiyo'],key:g=>g.hasPromotion&&Number.isFinite(g.instant)?g.instant.toLocaleString('ko-KR')+'원':null},
+   {id:'coupon',title:'쿠폰 금액별',channels:['baemin','coupang','yogiyo'],key:g=>g.hasPromotion&&Number.isFinite(g.coupon)?g.coupon.toLocaleString('ko-KR')+'원':null},
    {id:'ad',title:'광고 설정별',channels:['baemin','coupang','yogiyo'],key:g=>g.ad.length?g.ad.join(' / '):null},
    {id:'timesale',title:'배민 타임세일 인원별',channels:['baemin'],key:g=>g.ts?(g.ts.on?'ON · '+g.ts.cap+'명':'OFF · 설정 '+g.ts.cap+'명'):null},
    {id:'goldbox',title:'쿠팡 골드박스별',channels:['coupang'],key:g=>g.gold===null?null:(g.gold?'ON':'OFF')}
@@ -478,19 +478,19 @@ async function runCoach(){
      const metric=byChannel.get(d.date)?.[ch];if(!metric||metric.sales<=0)continue;
      const g=coachOperating(d.date)[ch]||{hasPromotion:false,ad:[],ts:null,gold:null};
      const key=seg.key(g);if(key===null)continue;
-     if(!buckets.has(key))buckets.set(key,{sales:[],orders:[],ads:[],days:[]});
-     const v=buckets.get(key);v.sales.push(metric.sales);v.orders.push(metric.orders);v.ads.push(metric.ads);v.days.push(d.date);
+     if(!buckets.has(key))buckets.set(key,{sales:[],orders:[],ads:[],days:[],weekdaySales:[]});
+     const v=buckets.get(key);v.sales.push(metric.sales);v.orders.push(metric.orders);v.ads.push(metric.ads);v.days.push(d.date);if(new Date(d.date+'T12:00:00').getDay()===wd)v.weekdaySales.push(metric.sales);
     }
     for(const [setting,v] of buckets){if(v.sales.length<3)continue;
-     conditionRows.push({type:seg.title,channel:coachChName[ch]||ch,setting,n:v.sales.length,sales:coachAvg(v.sales),orders:coachAvg(v.orders),ads:coachAvg(v.ads),start:v.days.reduce((a,b)=>a<b?a:b),end:v.days.reduce((a,b)=>a>b?a:b)});
+     conditionRows.push({type:seg.title,channel:coachChName[ch]||ch,setting,n:v.sales.length,sales:coachAvg(v.sales),orders:coachAvg(v.orders),ads:coachAvg(v.ads),weekdayAvg:v.weekdaySales.length>=3?coachAvg(v.weekdaySales):null,weekdayN:v.weekdaySales.length,start:v.days.reduce((a,b)=>a<b?a:b),end:v.days.reduce((a,b)=>a>b?a:b)});
     }
    }
   }
   if(conditionRows.length){
    const order=segments.map(s=>s.title);
    conditionRows.sort((a,b)=>order.indexOf(a.type)-order.indexOf(b.type)||a.channel.localeCompare(b.channel)||b.n-a.n);
-   add('설정별 매출·광고비 비교','최근 180일 중 분석일과 같은 요일의 배민·쿠팡이츠 등 일별 매출을 설정별로 집계했습니다. 각 설정은 3일 이상 기록이 있을 때만 표시합니다.','neutral',conditionRows);
-  }else add('설정별 비교 자료 확보 중','최근 180일의 같은 요일 중 동일한 설정으로 기록된 날이 3일 이상 있어야 표를 표시합니다. 설정 이력이나 매출 기록이 부족할 수 있습니다.');
+   add('설정별 매출·광고비 비교','최근 180일 전체 요일의 매출 입력일을 기준으로 설정별 집계했습니다. 실제 설정 유지 기간과 매출 집계일은 다릅니다.','neutral',conditionRows);
+  }else add('설정별 비교 자료 확보 중','최근 180일 동안 동일 설정으로 매출이 입력된 날이 3일 이상 있어야 표를 표시합니다. 설정 이력이나 매출 기록이 부족할 수 있습니다.');
   const notesText=notes.get(target)?.memo;if(notesText)add('매장 일정·메모',notesText);
   const n=sample.length,disp=coachAvg(sample.map(x=>Math.abs(x.sales-base))),range=Math.max(disp,base*.15);const score=n?Math.max(0,Math.min(100,Math.round(50+(base/(coachMedian(valid.slice(-28).map(x=>x.sales))||base)-1)*50))):null;
   $('coachScore').textContent=n?score+'점 · '+(score>=60?'호조':score>=45?'보통':'주의'):'분석 불가';$('coachPrediction').textContent=n?`${Math.round(Math.max(0,base-range)/10000)}~${Math.round((base+range)/10000)}만원`:'자료 부족';$('coachSamples').textContent=n+'일';$('coachConfidence').textContent=n>=12?'보통':n>=6?'낮음':'매우 낮음';
@@ -500,9 +500,9 @@ async function runCoach(){
     const types=[...new Set(x.rows.map(r=>r.type))];
     const sections=types.map(type=>{
      const rows=x.rows.filter(r=>r.type===type);
-     return `<div class="coach-v86-group"><h4>${esc(type)}</h4><div class="coach-v85-scroll"><table class="coach-v85-table coach-v86-table"><thead><tr><th>플랫폼</th><th>설정</th><th>운영일</th><th>일평균 매출</th><th>일평균 주문</th><th>일평균 광고비</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.channel)}</td><td>${esc(r.setting)}</td><td>${r.n}일</td><td><strong>${esc(coachMoney(r.sales))}</strong></td><td>${Number(r.orders.toFixed(1)).toLocaleString('ko-KR')}건</td><td>${esc(coachMoney(r.ads))}</td></tr>`).join('')}</tbody></table></div></div>`;
+     return `<div class="coach-v86-group"><h4>${esc(type)}</h4><div class="coach-v85-scroll"><table class="coach-v85-table coach-v86-table"><thead><tr><th>플랫폼</th><th>설정</th><th>매출 집계일</th><th>기록 범위</th><th>일평균 매출</th><th>같은 요일 평균</th><th>일평균 주문</th><th>일평균 광고비</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.channel)}</td><td>${esc(r.setting)}</td><td>${r.n}일</td><td>${esc(r.start.slice(5))} ~ ${esc(r.end.slice(5))}</td><td><strong>${esc(coachMoney(r.sales))}</strong></td><td>${r.weekdayAvg===null?'자료 부족':esc(coachMoney(r.weekdayAvg))+' ('+r.weekdayN+'일)'}</td><td>${Number(r.orders.toFixed(1)).toLocaleString('ko-KR')}건</td><td>${esc(coachMoney(r.ads))}</td></tr>`).join('')}</tbody></table></div></div>`;
     }).join('');
-    return `<section class="coach-v85-card">${heading}<p class="coach-v85-explain">최근 180일 중 <b>분석 날짜와 같은 요일</b>만 사용했습니다. 표본이 3일 미만인 설정은 제외합니다.</p>${sections}<p class="coach-v85-note">각 행은 해당 조건으로 운영한 날의 관측 평균입니다. 다른 광고·할인·계절 조건이 함께 달라질 수 있으므로 인과효과를 뜻하지 않습니다. 광고비는 기록된 금액 기준이며 실제 손익 계산에 필요한 원가·정산·할인 부담액이 없으면 순이익은 표시하지 않습니다.</p></section>`;
+    return `<section class="coach-v85-card">${heading}<p class="coach-v85-explain">최근 180일 <b>전체 요일</b>의 매출 입력일을 집계합니다. 같은 요일 평균은 별도로 표시하며, 표본이 3일 미만인 설정은 제외합니다.</p>${sections}<p class="coach-v85-note">'매출 집계일'은 실제 매출 자료가 있는 날의 수이며 설정을 유지한 전체 운영일이 아닙니다. '기록 범위'는 집계된 첫날~마지막 날로, 그 사이 모든 날짜에 해당 설정이 적용됐다는 뜻은 아닙니다. 쿠폰 0원은 해당 날짜에 0원으로 저장된 프로모션 이력이 있는 경우만 표시하며, 이력이 없는 날짜는 쿠폰 비교에서 제외합니다. 각 행은 해당 조건의 관측 평균입니다. 다른 광고·할인·계절 조건이 함께 달라질 수 있으므로 인과효과를 뜻하지 않습니다. 광고비는 기록된 금액 기준이며 실제 손익 계산에 필요한 원가·정산·할인 부담액이 없으면 순이익은 표시하지 않습니다.</p></section>`;
    }
    if(x.rows&&x.rows.length&&x.rows[0].detail){return `<section class="coach-v85-card">${heading}<div class="coach-v85-scroll"><table class="coach-v85-table coach-v85-setting"><tbody>${x.rows.map(r=>`<tr><th>${esc(r.name)}</th><td>${esc(r.detail)}</td></tr>`).join('')}</tbody></table></div></section>`;}
    return `<section class="coach-v85-card">${heading}<div class="coach-v85-body">${esc(x.body)}</div></section>`;
