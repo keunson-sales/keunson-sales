@@ -170,8 +170,53 @@ html.force-mobile-cal #homeCalendar .cal-weather{display:none!important}
 .home-stats .home-stat[data-stat-target]:hover,.home-stats .home-stat[data-stat-target]:focus-visible{background:#e8efff;box-shadow:0 0 0 2px #2563eb;outline:none;transform:translateY(-1px)}
 .home-stats .home-stat[data-stat-target]::after{content:"상세 보기 ↗";display:block;font-size:11px;color:#285ac7;margin-top:5px;font-weight:600}
 .home-stats .home-stat[data-stat-target]:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
-</style></head><body><dialog class="fin-dialog" id="memoDialog"><h3 id="memoTitle">날짜 메모</h3><textarea id="memoText" placeholder="경기, 행사, 날씨, 매장 특이사항 등"></textarea><div class="actions" style="margin-top:12px"><button id="memoSave" type="button">메모 저장</button><button class="secondary" id="memoRemove" type="button">메모 삭제</button><button class="secondary" id="memoClose" type="button">닫기</button></div><p class="hint" id="memoStatus"></p></dialog><header><div class="flex between"><div><h1>큰손닭강정 권선점 · 통합 경영관리</h1><p>v10.8 · 매출 / 매입 / 인사관리 / 관리 · 전월 비교 검증 · 광고 지표 기간 일치 · 채널별 월간 비교 · 광고 미입력 구분 · CSV 데이터 관리</p></div><div class="flex hidden" id="account"><span class="muted" id="who"></span><button class="secondary" id="logout">로그아웃</button></div></div></header><main>
-<section class="panel login" id="loginPanel"><h2>관리자 로그인</h2><p class="muted">Supabase에서 생성한 관리자 계정으로 로그인하세요.</p><form id="loginForm"><div class="field"><label for="email">이메일</label><input autocomplete="username" id="email" required="" type="email"/></div><div class="field"><label for="password">비밀번호</label><input autocomplete="current-password" id="password" required="" type="password"/></div><button id="loginBtn" type="submit">로그인</button></form><p id="loginMessage" role="status"></p></section>
+</style><style>.store-viewer #app button:disabled{opacity:.3}.store-viewer #app form{opacity:.65}.store-viewer #app input:disabled,.store-viewer #app select:disabled{background:#f1f5f9}</style><script id="shared-access-v109">
+(function(){
+  const OWNER='fcorea@naver.com',VIEWER='fairy530@naver.com';
+  let viewer=false,ready=false;
+  const canonical=e=>String(e||'').trim().toLowerCase();
+  window.__storeReadOnly=()=>viewer;
+  function protect(){
+    document.documentElement.classList.toggle('store-viewer',viewer);
+    const a=document.getElementById('who');if(a&&viewer)a.textContent='fairy530@naver.com · 조회 전용';
+    if(!viewer)return;
+    document.querySelectorAll('#app form').forEach(f=>{f.querySelectorAll('input,textarea,select,button').forEach(el=>{el.disabled=true;});});
+    document.querySelectorAll('#app button').forEach(b=>{
+      const id=b.id||'',label=(b.textContent||'').trim();
+      if(/저장|삭제|수정|추가|등록|적용|종료|초기화|가져오기|업로드|확정|생성|취소|이동|복사/.test(label) || /save|delete|remove|add|insert|update|import|upload|reset|stop|clear|confirm|migrate/i.test(id)) b.disabled=true;
+    });
+  }
+  let scheduled=false;
+  const observer=new MutationObserver(()=>{if(viewer&&!scheduled){scheduled=true;setTimeout(()=>{scheduled=false;protect()},40)}});
+  document.addEventListener('DOMContentLoaded',()=>{observer.observe(document.getElementById('app')||document.body,{childList:true,subtree:true});protect()});
+  document.addEventListener('submit',e=>{if(viewer&&e.target.closest('#app')){e.preventDefault();e.stopImmediatePropagation();alert('조회 전용 계정은 데이터를 변경할 수 없습니다.')}},true);
+  document.addEventListener('click',e=>{if(!viewer)return;const b=e.target.closest('button');if(b&&b.closest('#app')&&b.disabled){e.preventDefault();e.stopImmediatePropagation()}},true);
+  window.__createSharedClient=function(client){
+    const originalAuth=client.auth;
+    async function mapUser(u){
+      if(!u){viewer=false;ready=true;protect();return u}
+      const email=canonical(u.email);
+      if(email!==OWNER&&email!==VIEWER){viewer=true;ready=true;protect();throw new Error('허용되지 않은 계정입니다. 관리자에게 문의하세요.')}
+      viewer=email===VIEWER;
+      if(!viewer){ready=true;protect();return u}
+      const {data,error}=await client.rpc('store_owner_id');
+      if(error||!data){ready=false;throw new Error('조회 전용 권한 SQL이 아직 적용되지 않았습니다: '+(error?.message||'관리자 정보 없음'))}
+      ready=true;protect();return {...u,id:data};
+    }
+    async function mapSession(s){if(!s){await mapUser(null);return null}return {...s,user:await mapUser(s.user)}}
+    const auth=new Proxy(originalAuth,{
+      get(target,prop){
+        if(prop==='getUser')return async(...args)=>{const r=await target.getUser(...args);if(r.data?.user)r.data={...r.data,user:await mapUser(r.data.user)};return r};
+        if(prop==='getSession')return async(...args)=>{const r=await target.getSession(...args);if(r.data)r.data={...r.data,session:await mapSession(r.data.session)};return r};
+        if(prop==='onAuthStateChange')return callback=>target.onAuthStateChange((event,session)=>{Promise.resolve().then(()=>mapSession(session)).then(mapped=>callback(event,mapped)).catch(err=>{console.error('계정 권한 확인 오류:',err.message);document.getElementById('loginMessage')?.replaceChildren(document.createTextNode(err.message));})});
+        const value=Reflect.get(target,prop,target);return typeof value==='function'?value.bind(target):value;
+      }
+    });
+    return new Proxy(client,{get(target,prop){if(prop==='auth')return auth;const value=Reflect.get(target,prop,target);return typeof value==='function'?value.bind(target):value}});
+  };
+})();
+</script></head><body><dialog class="fin-dialog" id="memoDialog"><h3 id="memoTitle">날짜 메모</h3><textarea id="memoText" placeholder="경기, 행사, 날씨, 매장 특이사항 등"></textarea><div class="actions" style="margin-top:12px"><button id="memoSave" type="button">메모 저장</button><button class="secondary" id="memoRemove" type="button">메모 삭제</button><button class="secondary" id="memoClose" type="button">닫기</button></div><p class="hint" id="memoStatus"></p></dialog><header><div class="flex between"><div><h1>큰손닭강정 권선점 · 통합 경영관리</h1><p>v10.9 · 매출 / 매입 / 인사관리 / 관리 · 전월 비교 검증 · 광고 지표 기간 일치 · 채널별 월간 비교 · 광고 미입력 구분 · CSV 데이터 관리</p></div><div class="flex hidden" id="account"><span class="muted" id="who"></span><button class="secondary" id="logout">로그아웃</button></div></div></header><main>
+<section class="panel login" id="loginPanel"><h2>매장 관리 로그인</h2><p class="muted">관리자 또는 조회 전용 계정으로 로그인하세요.</p><form id="loginForm"><div class="field"><label for="email">이메일</label><input autocomplete="username" id="email" required="" type="email"/></div><div class="field"><label for="password">비밀번호</label><input autocomplete="current-password" id="password" required="" type="password"/></div><button id="loginBtn" type="submit">로그인</button></form><p id="loginMessage" role="status"></p></section>
 <div class="hidden" id="app"><nav aria-label="경영관리 메뉴" class="main-tabs"><button aria-selected="true" class="main-tab active" data-main-tab="home" type="button">홈</button><button aria-selected="false" class="main-tab" data-main-tab="sales" type="button">매출</button><button aria-selected="false" class="main-tab" data-main-tab="purchase" type="button">매입</button><button aria-selected="false" class="main-tab" data-main-tab="labor" type="button">인사관리</button><button aria-selected="false" class="main-tab" data-main-tab="management" type="button">관리</button></nav><div class="main-view" id="homeView"><section class="panel"><div class="home-head"><div><h2>월간 경영 달력</h2><p class="muted">날짜별 매출·매입과 월간 합계를 한눈에 확인합니다.</p></div><div class="flex"><button aria-label="이전 달" class="secondary" id="homePrev" type="button">◀</button><span class="home-month" id="homeMonth">—</span><button aria-label="다음 달" class="secondary" id="homeNext" type="button">▶</button><button class="secondary" id="homeToday" type="button">이번 달</button></div></div><div class="muted" id="homeStatus" role="status">로그인 후 데이터를 조회합니다.</div><p class="hint" id="finMissingNotice" style="font-weight:700;color:#b91c1c"></p><div class="home-stats"><div class="home-stat"><small>월 상품매출</small><strong id="homeSales">—</strong></div><div class="home-stat"><small>월 매입액</small><strong id="homePurchases">—</strong></div><div class="home-stat"><small>월 광고비 (참고)</small><strong id="homeAds">—</strong></div><div class="home-stat"><small>월 인건비 (기본급)</small><strong id="homeLabor">—</strong></div><div class="home-stat"><small>월 운영비 (조회 기준일까지)</small><strong id="homeOperating">—</strong></div><div class="home-stat"><small>잠정 손익</small><strong id="homeDifference">—</strong></div><div class="home-stat"><small>잠정 손익률</small><strong id="homeMargin">—</strong></div></div><p class="home-warn">잠정 손익 = 채널별 예상 입금액 합계 + 현장주문 수수료 차감액 − 매입액 − 인건비 − 정산에 포함되지 않은 광고비. 운영비는 월 비용 일할액과 누적 실적비 증가액을 반영합니다. 매입액은 매출원가와 다르며 미입력 비용은 반영되지 않습니다. 온라인 정산율에 광고비가 포함되어 있다면 광고비 별도 차감을 해제하세요.</p><div class="cal-legend"><span>● 파랑: 매출</span><span>● 주황: 매입</span><span>● 보라: 인건비</span><span>● 빨간점: 메모 · 청록점: 변경이력 (마우스 올려 보기)</span><span>날짜 우클릭: 메모 작성</span><span>날짜 클릭: 상세·변경이력</span></div><div aria-label="모바일 달력 금액 색상 안내" class="mobile-finance-legend"><span><i class="mfl-dot sales"></i>매출</span><span><i class="mfl-dot buy"></i>매입</span><span><i class="mfl-dot labor"></i>인건비</span><span><i class="mfl-dot profit"></i>손익</span></div><div class="mobile-cal-nav" id="mobileCalNav"><button aria-label="이전 주" id="mobileCalPrev" type="button">‹ 이전 주</button><strong id="mobileCalWeekLabel">주간 보기</strong><button aria-label="다음 주" id="mobileCalNext" type="button">다음 주 ›</button></div><div class="cal-week"><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div><div>일</div><div>주간 합계</div></div><p class="hint" id="monthWeatherStatus">권선동 월간 날씨를 불러오는 중입니다.</p><div aria-label="월간 경영 달력" class="cal-days" id="homeCalendar"></div><div class="home-detail" id="homeDetail">날짜를 선택하면 일별 현황을 볼 수 있습니다.</div><div class="home-detail" id="homeHistory" style="margin-top:10px">날짜별 변경이력을 확인할 수 있습니다.</div></section><section class="panel" id="homeTrendPanel"><div class="flex between"><h2>일별 전체매출 · 전체비용 추이</h2><span class="muted">달력에서 선택한 월 기준</span></div>
 <div class="home-trend-controls"><label>매출 채널 <select id="homeTrendChannel"><option value="all">전체 채널</option><option value="baemin">배민</option><option value="coupang">쿠팡이츠</option><option value="yogiyo">요기요</option><option value="ddangyo">땡겨요</option><option value="delivery_special">배달특급</option><option value="walkin">현장주문</option><option value="naver">네이버</option></select></label>
 <div class="home-cost-choices"><strong>전체비용 포함 항목</strong><label><input checked="" id="homeTrendBuy" type="checkbox"/> 매입</label><label><input checked="" id="homeTrendLabor" type="checkbox"/> 인건비</label><label><input id="homeTrendManage" type="checkbox"/> 관리비</label></div></div>
@@ -269,7 +314,8 @@ html.force-mobile-cal #homeCalendar .cal-weather{display:none!important}
  window.renderMarketingSummary=function(){const target=document.getElementById('coachNews');if(!target)return;let box=document.getElementById('marketingUnified');if(!box){box=document.createElement('div');box.id='marketingUnified';box.className='home-detail marketing-summary';target.after(box)}const date=document.getElementById('coachDate')?.value||new Date().toLocaleDateString('sv-SE');const html=cards(snapshot(date));box.innerHTML='<b>⚡ 해당 날짜 운영 설정 · 할인·쿠폰·타임세일·골드박스</b>'+(html?'<div class="marketing-summary-grid">'+html+'</div>':'<p class="hint">해당 날짜에 등록된 운영 설정이 없습니다.</p>')};
 })();
 </script><script type="module">
-import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createClient as originalCreateClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const createClient=(...args)=>window.__createSharedClient(originalCreateClient(...args));
 const SUPABASE_URL='https://yeabulnezsjvhlvifjbp.supabase.co';const KEY='sb_publishable_iUAPQw0AKcfcHJEVDqruKA_pMLpxuWp';const db=createClient(SUPABASE_URL,KEY);const channels={baemin:'배민',coupang:'쿠팡',yogiyo:'요기요',ddangyo:'땡겨요',delivery_special:'배달특급',walkin:'현장주문',naver:'네이버'};const numeric=['sales','orders','ad_sales','ad_spend','ad_impressions','ad_clicks','ad_orders','ad_order_amount','new_customers','ad_rate','cpc_peak','cpc_offpeak'];const integer=new Set(['orders','ad_impressions','ad_clicks','ad_orders','new_customers','cpc_peak','cpc_offpeak']);const PENDING='[광고데이터미입력]';const isPending=r=>String(r.notes||'').includes(PENDING);const cleanNotes=n=>String(n||'').replaceAll(PENDING,'').trim();const required=['sales','orders','ad_sales','ad_spend','ad_impressions','ad_clicks','ad_orders','ad_order_amount','new_customers'];let user=null,records=[],previousRecords=[],periodCurrentRecords=[],previousMonthFullRecords=[],settingHistory=[];const $=id=>document.getElementById(id);const won=n=>Math.round(Number(n)||0).toLocaleString('ko-KR')+'원';const count=n=>Number(n||0).toLocaleString('ko-KR');const pct=n=>Number.isFinite(n)?n.toFixed(1)+'%':'—';const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const today=()=>{let d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};const t=today();$('sale_date').value=t;$('from').value=t.slice(0,8)+'01';$('to').value=t;$('channel').innerHTML=Object.entries(channels).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
 function msg(id,text,bad=false){$(id).textContent=text;$(id).className=bad?'error':'success'}function display(session){user=session?.user||null;$('loginPanel').classList.toggle('hidden',!!user);$('app').classList.toggle('hidden',!user);$('account').classList.toggle('hidden',!user);$('who').textContent=user?.email||'';if(user)load();else {records=[];previousRecords=[];periodCurrentRecords=[];previousMonthFullRecords=[];settingHistory=[]}}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginBtn').disabled=true;msg('loginMessage','로그인 중...');try{const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;$('password').value='';msg('loginMessage','')}catch(err){msg('loginMessage',err.message,true)}finally{$('loginBtn').disabled=false}});$('logout').onclick=async()=>{await db.auth.signOut()};db.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>display(session),0)});db.auth.getSession().then(({data})=>display(data.session));
@@ -388,7 +434,8 @@ const cols=['sale_date','channel',...numeric,'notes'];function csvCell(v){let s=
 function parseCSV(text){text=text.replace(/^\ufeff/,'');let rows=[],row=[],value='',quote=false;for(let i=0;i<text.length;i++){let c=text[i];if(quote){if(c==='"'&&text[i+1]==='"'){value+='"';i++}else if(c==='"')quote=false;else value+=c}else if(c==='"')quote=true;else if(c===','){row.push(value);value=''}else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(value);if(row.some(x=>x!==''))rows.push(row);row=[];value=''}else value+=c}if(quote)throw Error('CSV 따옴표 형식이 잘못되었습니다.');row.push(value);if(row.some(x=>x!==''))rows.push(row);return rows}
 $('importBtn').onclick=()=>$('csvFile').click();$('csvFile').onchange=async e=>{let file=e.target.files?.[0];if(!file||!user)return;try{let rows=parseCSV(await file.text());if(rows.length<2)throw Error('CSV에 데이터가 없습니다.');let header=rows.shift().map(x=>x.trim());for(let k of ['sale_date','channel','sales','orders'])if(!header.includes(k))throw Error('필수 열 누락: '+k);if(rows.length>1000)throw Error('1회 최대 1,000행까지 가져올 수 있습니다.');let entries=rows.map((arr,i)=>{let obj={user_id:user.id,updated_at:new Date().toISOString()};header.forEach((k,j)=>{if(cols.includes(k))obj[k]=arr[j]??''});if(!/^\d{4}-\d{2}-\d{2}$/.test(obj.sale_date||''))throw Error(`${i+2}행 날짜 형식 오류`);if(!channels[obj.channel])throw Error(`${i+2}행 채널 코드 오류`);numeric.forEach(k=>{let s=String(obj[k]??'').trim();obj[k]=s===''?(required.includes(k)?0:null):Number(s)});obj.notes=obj.notes||null;return validate(obj)});let uniq=new Map(entries.map(r=>[r.sale_date+'|'+r.channel,r]));if(!confirm(`${uniq.size}건을 저장할까요? 같은 날짜·채널의 기존 자료는 덮어씁니다.`))return;for(let batch of Array.from(uniq.values()).reduce((a,r,i)=>{if(i%100===0)a.push([]);a[a.length-1].push(r);return a},[])){let {error}=await db.from('daily_sales').upsert(batch,{onConflict:'user_id,sale_date,channel'});if(error)throw error}msg('dataMessage',`${uniq.size}건 가져오기 완료`);await load()}catch(err){msg('dataMessage','CSV 가져오기 실패: '+err.message,true)}finally{e.target.value=''}};
 </script><script type="module">
-import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createClient as originalCreateClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const createClient=(...args)=>window.__createSharedClient(originalCreateClient(...args));
 const db=createClient('https://yeabulnezsjvhlvifjbp.supabase.co','sb_publishable_iUAPQw0AKcfcHJEVDqruKA_pMLpxuWp');
 const $=id=>document.getElementById(id), fmt=n=>Math.round(Number(n)||0).toLocaleString('ko-KR')+'원', num=n=>Number(n||0).toLocaleString('ko-KR'), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let uid=null,items=[],purchases=[],editItem=null,editPurchase=null,requestId=0;
@@ -478,7 +525,8 @@ new MutationObserver(()=>renderPurchases()).observe($('sumSales'),{childList:tru
 db.auth.onAuthStateChange((_event,session)=>{const next=session?.user?.id||null;if(next!==uid){uid=next;if(uid)loadPurchase();else{items=[];purchases=[];drawItems();renderPurchases()}}});db.auth.getSession().then(({data})=>{const next=data.session?.user?.id||null;if(next&&next!==uid){uid=next;loadPurchase()}});
 </script>
 <script type="module">
-import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createClient as originalCreateClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const createClient=(...args)=>window.__createSharedClient(originalCreateClient(...args));
 const db=createClient('https://yeabulnezsjvhlvifjbp.supabase.co','sb_publishable_iUAPQw0AKcfcHJEVDqruKA_pMLpxuWp');
 const $=id=>document.getElementById(id),won=n=>Math.round(Number(n)||0).toLocaleString('ko-KR')+'원',short=n=>Math.abs(n)>=10000?Math.round(n/10000).toLocaleString('ko-KR')+'만':Math.round(n).toLocaleString('ko-KR');
 const calNumber=n=>Math.round((Number(n)||0)/10000).toLocaleString('ko-KR');
@@ -691,7 +739,8 @@ $('homePrev').onclick=()=>move(-1);$('homeNext').onclick=()=>move(1);$('homeToda
 db.auth.onAuthStateChange((_event,session)=>{const next=session?.user?.id||null;if(uid!==next){uid=next;if(uid){load();runCoach();updateCoachContext()}else{token++;coachReq++;dayMap=new Map();draw();status('로그인 후 데이터를 조회합니다.')}}});db.auth.getSession().then(({data})=>{const next=data.session?.user?.id||null;if(next&&next!==uid){uid=next;load();runCoach();updateCoachContext()}});document.querySelectorAll('[data-main-tab]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.mainTab==='home'&&uid)load()}));window.addEventListener('hr-history-imported',()=>{if(uid)load()});draw();
 </script>
 <script>document.querySelectorAll('[data-main-tab]').forEach(btn=>btn.addEventListener('click',()=>{const key=btn.dataset.mainTab;document.querySelectorAll('[data-main-tab]').forEach(b=>{const active=b===btn;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active))});for(const [name,id] of Object.entries({home:'homeView',sales:'salesView',purchase:'purchaseView',labor:'laborView',management:'managementView'}))document.getElementById(id).classList.toggle('hidden',name!==key);if(key==='sales')window.dispatchEvent(new Event('resize'));}));</script><script type="module">
-import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createClient as originalCreateClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const createClient=(...args)=>window.__createSharedClient(originalCreateClient(...args));
 const db=createClient('https://yeabulnezsjvhlvifjbp.supabase.co','sb_publishable_iUAPQw0AKcfcHJEVDqruKA_pMLpxuWp');
 const el=id=>document.getElementById(id),safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>Math.round(n||0).toLocaleString('ko-KR')+'원',iso=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
@@ -786,7 +835,8 @@ el('hrImportHistory').onclick=async()=>{
 el('hrPayWeek').value=iso(new Date());el('hrPayFrom').value=iso(new Date()).slice(0,8)+'01';el('hrPayTo').value=iso(new Date());el('hrPayMode').onchange=()=>{const mode=el('hrPayMode').value;for(const [id,show] of [['hrPayMonthWrap',mode==='month'],['hrPayWeekWrap',mode==='week'],['hrPayFromWrap',mode==='range'],['hrPayToWrap',mode==='range']])el(id).classList.toggle('hidden',!show);loadPayroll()};el('hrPayRefresh').onclick=loadPayroll;el('hrPayMonth').onchange=loadPayroll;
 const observer=new MutationObserver(()=>{if(!el('laborView').classList.contains('hidden')&&!loaded){loaded=true;loadStaff().then(()=>loadSchedule()).then(loadPayroll).catch(e=>{status('hrEmployeeStatus','인사관리 설정 확인: '+e.message);loaded=false})}});observer.observe(el('laborView'),{attributes:true,attributeFilter:['class']});
 </script><script type="module">
-import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createClient as originalCreateClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const createClient=(...args)=>window.__createSharedClient(originalCreateClient(...args));
 const db=createClient('https://yeabulnezsjvhlvifjbp.supabase.co','sb_publishable_iUAPQw0AKcfcHJEVDqruKA_pMLpxuWp');
 const $=id=>document.getElementById(id), E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const names={baemin:'배민',coupang:'쿠팡이츠',yogiyo:'요기요',ddangyo:'땡겨요',delivery_special:'배달특급'};
@@ -845,7 +895,8 @@ async function goldLoad(){const {data}=await db.auth.getUser();goldUid=data?.use
 $('goldForm').onsubmit=async e=>{e.preventDefault();if(!goldUid)return goldNote('로그인이 필요합니다.');const start=$('goldStart').value,end=$('goldEnd').value;if(!start||(end&&end<start))return goldNote('시작일과 종료일을 확인하세요.');if(goldRows.some(r=>r.id!==$('goldId').value&&r.start_date<=(end||'9999-12-31')&&(!r.end_date||r.end_date>=start)))return goldNote('기존 이력과 기간이 겹칩니다.');const row={user_id:goldUid,start_date:start,end_date:end||null,enabled:$('goldEnabled').value==='true',memo:$('goldMemo').value.trim()};if($('goldId').value)row.id=$('goldId').value;const {error}=await db.from('coupang_goldbox_history').upsert(row);if(error)return goldNote('저장 실패: '+error.message);goldReset();goldNote('골드박스 ON/OFF 이력이 저장되었습니다.');await goldLoad()};$('goldReset').onclick=goldReset;goldReset();
 const goldObserver=new MutationObserver(()=>{if(goldUid&&document.querySelector('[data-home-day]')&&!document.querySelector('.gold-marker')&&goldRows.length)queueMicrotask(goldCalendar)});goldObserver.observe($('homeCalendar'),{childList:true});$('coachDate')?.addEventListener('change',goldCoach);$('coachRefresh')?.addEventListener('click',()=>setTimeout(goldCoach,200));db.auth.onAuthStateChange(()=>setTimeout(goldLoad,0));goldLoad();
 </script><script type="module">
-import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createClient as originalCreateClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const createClient=(...args)=>window.__createSharedClient(originalCreateClient(...args));
 const db=createClient('https://yeabulnezsjvhlvifjbp.supabase.co','sb_publishable_iUAPQw0AKcfcHJEVDqruKA_pMLpxuWp');
 const el=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const channels={baemin:'배민',coupang:'쿠팡이츠',yogiyo:'요기요',ddangyo:'땡겨요',delivery_special:'배달특급'},kinds={advertising:'광고',promotion:'즉시할인·쿠폰',time_sale:'타임세일',goldbox:'골드박스'};
@@ -994,7 +1045,8 @@ window.addEventListener('resize',draw);
 setTimeout(draw,200);
 })();
 </script><script type="module" id="op-v99-script">
-import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createClient as originalCreateClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const createClient=(...args)=>window.__createSharedClient(originalCreateClient(...args));
 const db=createClient('https://yeabulnezsjvhlvifjbp.supabase.co','sb_publishable_iUAPQw0AKcfcHJEVDqruKA_pMLpxuWp');
 const $=id=>document.getElementById(id),fmt=n=>Math.round(n).toLocaleString('ko-KR')+'원';
 const defaults=[['rent','임대료','fixed'],['building','관리비','fixed'],['accounting','세무사 기장료','fixed'],['telecom','통신비','fixed'],['electric','전기','variable'],['gas','가스','variable'],['water','수도','variable'],['pos','포스 이용료','fixed'],['insurance','보험료','fixed']];
